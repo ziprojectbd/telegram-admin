@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(yarn build:*)",
+      "Bash(node:*)",
+      "Bash(yarn dev:*)",
+      "Bash(curl -s http://localhost:3000/api/auth/session)",
+      "Bash(curl -s http://localhost:3001/api/auth/session)",
+      "Bash(curl:*)",
+      "Bash(taskkill //F //IM node.exe)"
+    ]
+  }
+}
