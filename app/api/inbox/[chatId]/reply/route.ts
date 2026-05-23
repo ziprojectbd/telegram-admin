@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { bot } from "@/lib/telegram";
 import dbConnect from "@/lib/db";
+import TelegramChat from "@/models/TelegramChat";
 import TelegramMessage from "@/models/TelegramMessage";
 
 export async function POST(
@@ -17,6 +18,13 @@ export async function POST(
   const voiceFile = formData.get("voice") as File | null;
 
   const chatId = params.chatId;
+
+  // Check if user is blocked
+  await dbConnect();
+  const chat = await TelegramChat.findOne({ chatId }).lean();
+  if (chat && (chat as any).blocked) {
+    return NextResponse.json({ error: "This user has been blocked. Unblock them to send messages." }, { status: 403 });
+  }
 
   try {
     let sentMessage: any;

@@ -21,11 +21,11 @@ export async function GET() {
         .select("text mediaType timestamp fromId")
         .lean();
 
-      // Count unread messages (incoming from users, exclude /start commands and admin replies)
+      // Count unread messages that are incoming from users and not yet read
       const unreadCount = await TelegramMessage.countDocuments({
         chatId: chat.chatId,
         fromId: { $ne: "admin" },
-        text: { $not: /^\/start/ },
+        read: false,
       });
 
       let lastMessagePreview = "";

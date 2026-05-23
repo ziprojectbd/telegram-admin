@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { bot } from "@/lib/telegram";
 import dbConnect from "@/lib/db";
 import TelegramChat from "@/models/TelegramChat";
 import TelegramMessage from "@/models/TelegramMessage";

@@ -3,9 +3,7 @@ import { auth } from "@/lib/auth";
 import dbConnect from "@/lib/db";
 import Post from "@/models/Post";
 import User from "@/models/User";
-
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+import { bot, getTelegramChatId } from "@/lib/telegram";
 
 export async function POST(
   req: NextRequest,
@@ -37,28 +35,15 @@ export async function POST(
     });
   }
 
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    return NextResponse.json({ error: "Telegram not configured" }, { status: 400 });
+  const chatId = await getTelegramChatId();
+  if (!chatId) {
+    return NextResponse.json({ error: "Telegram not configured. Set Chat ID in Settings page." }, { status: 400 });
   }
 
   try {
     // Fetch recent updates from the channel to find the matching message
-    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        allowed_updates: ["channel_post", "message"],
-        timeout: 0,
-      }),
-    });
-    const data = await response.json();
+    const updates = await bot.getUpdates({ timeout: 0, allowed_updates: ["channel_post", "message"] });
     
-    if (!data.ok) {
-      return NextResponse.json({ error: `Telegram API error: ${data.description}` }, { status: 502 });
-    }
-
-    const updates = data.result || [];
     let foundMessageId: number | null = null;
     let foundChatId: string | null = null;
 

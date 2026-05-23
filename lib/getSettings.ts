@@ -5,25 +5,23 @@ import { auth } from "./auth";
 type SettingsData = {
   botToken: string;
   telegramChatId: string;
-  webhookSecret: string;
-  demoEmail: string;
-  demoPassword: string;
+  adminEmail: string;
+  adminPassword: string;
   autoReplyEnabled: boolean;
   welcomeMessage: string;
 };
 
 /**
  * Load settings for the current user.
- * Falls back to environment variables if DB value is empty.
+ * All values are database-driven — no environment variable fallbacks.
  */
 export async function getSettings(): Promise<SettingsData> {
   const session = await auth();
   const defaults: SettingsData = {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || "",
-    telegramChatId: process.env.TELEGRAM_CHAT_ID || "",
-    webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || "",
-    demoEmail: process.env.DEMO_EMAIL || "",
-    demoPassword: process.env.DEMO_PASSWORD || "",
+    botToken: "",
+    telegramChatId: "",
+    adminEmail: process.env.ADMIN_EMAIL || "",
+    adminPassword: process.env.ADMIN_PASSWORD || "",
     autoReplyEnabled: false,
     welcomeMessage: "",
   };
@@ -36,13 +34,12 @@ export async function getSettings(): Promise<SettingsData> {
     if (!dbSettings) return defaults;
 
     return {
-      botToken: (dbSettings as any).botToken || defaults.botToken,
-      telegramChatId: (dbSettings as any).telegramChatId || defaults.telegramChatId,
-      webhookSecret: (dbSettings as any).webhookSecret || defaults.webhookSecret,
-      demoEmail: (dbSettings as any).demoEmail || defaults.demoEmail,
-      demoPassword: (dbSettings as any).demoPassword || defaults.demoPassword,
-      autoReplyEnabled: (dbSettings as any).autoReplyEnabled ?? false,
-      welcomeMessage: (dbSettings as any).welcomeMessage || "",
+      botToken: (dbSettings as any)?.botToken || "",
+      telegramChatId: (dbSettings as any)?.telegramChatId || "",
+      adminEmail: (dbSettings as any)?.adminEmail || defaults.adminEmail,
+      adminPassword: (dbSettings as any)?.adminPassword || defaults.adminPassword,
+      autoReplyEnabled: (dbSettings as any)?.autoReplyEnabled ?? false,
+      welcomeMessage: (dbSettings as any)?.welcomeMessage || "",
     };
   } catch {
     return defaults;

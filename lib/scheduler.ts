@@ -1,6 +1,6 @@
 import dbConnect from "./db";
 import Post from "@/models/Post";
-import { bot } from "./telegram";
+import { bot, getTelegramChatId } from "./telegram";
 
 /**
  * Check for due scheduled posts and publish them to Telegram.
@@ -22,9 +22,9 @@ async function checkScheduledPosts() {
 
     for (const post of duePosts) {
       try {
-        const chatId = process.env.TELEGRAM_CHAT_ID;
+        const chatId = await getTelegramChatId();
         if (!chatId) {
-          console.error("📅 TELEGRAM_CHAT_ID not set, skipping scheduled post");
+          console.error("📅 No Telegram chat ID configured. Set it in Settings page.");
           continue;
         }
 

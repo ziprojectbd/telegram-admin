@@ -22,17 +22,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           throw new Error("Email and password are required");
         }
 
-        // Demo credentials check
-        if (email === process.env.DEMO_EMAIL && password === process.env.DEMO_PASSWORD) {
+        // Admin credentials check
+        if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
           // Find or create the user in DB to get a valid mongoose ObjectId
           await dbConnect();
-          let user = await User.findOne({ email: process.env.DEMO_EMAIL });
+          let user = await User.findOne({ email: process.env.ADMIN_EMAIL });
           if (!user) {
             // fallback if not seeded
-            const hashedPassword = await bcryptjs.hash(process.env.DEMO_PASSWORD!, 10);
+            const hashedPassword = await bcryptjs.hash(process.env.ADMIN_PASSWORD!, 10);
             user = await User.create({
-              name: "Demo User",
-              email: process.env.DEMO_EMAIL!,
+              name: "Admin User",
+              email: process.env.ADMIN_EMAIL!,
               password: hashedPassword,
             });
           }

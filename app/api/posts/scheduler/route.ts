@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { bot } from "@/lib/telegram";
+import { bot, getTelegramChatId } from "@/lib/telegram";
 import dbConnect from "@/lib/db";
 import Post from "@/models/Post";
 
@@ -27,9 +27,9 @@ export async function GET(req: Request) {
 
   for (const post of duePosts) {
     try {
-      const chatId = process.env.TELEGRAM_CHAT_ID;
+      const chatId = await getTelegramChatId();
       if (!chatId) {
-        console.error("TELEGRAM_CHAT_ID not set");
+        console.error("No Telegram chat ID configured. Set it in Settings page.");
         errors++;
         continue;
       }

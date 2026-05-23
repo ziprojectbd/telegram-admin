@@ -8,6 +8,7 @@ const TelegramMessageSchema = new mongoose.Schema({
   mediaUrl: String,
   mediaType: String,
   timestamp: { type: Date, default: Date.now },
+  read: { type: Boolean, default: false },
 }, { timestamps: true });
 
 export default mongoose.models.TelegramMessage || mongoose.model('TelegramMessage', TelegramMessageSchema);

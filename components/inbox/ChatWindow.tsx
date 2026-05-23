@@ -5,9 +5,15 @@ import { TelegramMessage } from "@/types";
 import { useSSE } from "@/hooks/useSSE";
 import MessageBubble from "./MessageBubble";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, Image, X, ChevronLeft, Mic, Square, Trash2, Copy } from "lucide-react";
+import { Send, Paperclip, Image, X, ChevronLeft, Mic, Square, Trash2, Copy, MoreVertical, Ban, CheckCircle, Trash } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 function MessageSkeleton() {
   return (
@@ -52,6 +58,9 @@ export default function ChatWindow({ chatId }: { chatId: string }) {
   const [sending, setSending] = useState(false);
   const [chatTitle, setChatTitle] = useState("");
   const [chatUsername, setChatUsername] = useState("");
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -73,13 +82,17 @@ export default function ChatWindow({ chatId }: { chatId: string }) {
           if (chat) {
             setChatTitle(chat.title || `Chat ${chatId.slice(0, 8)}`);
             setChatUsername(chat.username || "");
+            setIsBlocked(chat.blocked || false);
           }
         }
       })
       .catch(() => setChatTitle(`Chat ${chatId.slice(0, 8)}`));
+
+    // Mark messages as read when chat is opened
+    fetch(`/api/inbox/${chatId}/read`, { method: "POST" }).catch(() => {});
   }, [chatId]);
 
-  // Register new message notification
+  // Register new message notification and auto-mark as read
   useEffect(() => {
     onNewMessage((msg) => {
       const sender = chatTitle || "User";
@@ -94,8 +107,13 @@ export default function ChatWindow({ chatId }: { chatId: string }) {
         },
         icon: "💬",
       });
+
+      // Auto-mark incoming messages as read when chat window is open
+      if (msg.fromId !== "admin") {
+        fetch(`/api/inbox/${chatId}/read`, { method: "POST" }).catch(() => {});
+      }
     });
-  }, [onNewMessage, chatTitle]);
+  }, [onNewMessage, chatTitle, chatId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -107,6 +125,52 @@ export default function ChatWindow({ chatId }: { chatId: string }) {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  const toggleBlock = async () => {
+    setBlocking(true);
+    try {
+      const action = isBlocked ? "unblock" : "block";
+      const res = await fetch(`/api/inbox/${chatId}/block`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        setIsBlocked(!isBlocked);
+        toast.success(isBlocked ? "User unblocked" : "User blocked");
+      } else {
+        toast.error("Failed to update block status");
+      }
+    } catch {
+      toast.error("Failed to update block status");
+    } finally {
+      setBlocking(false);
+    }
+  };
+
+  const handleDeleteChat = async () => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this chat? All messages and chat data will be permanently removed.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/inbox/${chatId}/delete`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast.success("Chat deleted successfully");
+        router.push("/inbox");
+      } else {
+        toast.error("Failed to delete chat");
+      }
+    } catch {
+      toast.error("Failed to delete chat");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const startRecording = async () => {
     try {
@@ -251,7 +315,14 @@ export default function ChatWindow({ chatId }: { chatId: string }) {
           <ChevronLeft className="h-5 w-5 text-gray-400" />
         </button>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-[15px] text-white truncate">{chatTitle}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-[15px] text-white truncate">{chatTitle}</h3>
+            {isBlocked && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 shrink-0">
+                Blocked
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-1.5">
             <p className="text-[11px] text-gray-400">
               {chatUsername ? `@${chatUsername}` : chatId}
@@ -269,6 +340,42 @@ export default function ChatWindow({ chatId }: { chatId: string }) {
             </button>
           </div>
         </div>
+
+        {/* Three dot menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+              <MoreVertical className="h-5 w-5 text-gray-400" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="bg-[#17212B] border border-gray-700/30 text-gray-200 min-w-[160px]"
+          >
+            <DropdownMenuItem
+              onClick={toggleBlock}
+              disabled={blocking}
+              className={`cursor-pointer hover:bg-white/5 focus:bg-white/5 ${
+                isBlocked ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {isBlocked ? (
+                <CheckCircle className="mr-2 h-4 w-4" />
+              ) : (
+                <Ban className="mr-2 h-4 w-4" />
+              )}
+              {isBlocked ? "Unblock User" : "Block User"}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={handleDeleteChat}
+              disabled={deleting}
+              className="cursor-pointer hover:bg-white/5 focus:bg-white/5 text-red-400"
+            >
+              <Trash className="mr-2 h-4 w-4" />
+              Delete Chat
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Messages Area */}
@@ -276,6 +383,15 @@ export default function ChatWindow({ chatId }: { chatId: string }) {
         className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-1.5"
         style={{ backgroundColor: "#0E1621" }}
       >
+        {isBlocked && (
+          <div className="flex justify-center mb-3">
+            <div className="flex items-center gap-2 text-[11px] text-red-400/70 bg-red-500/10 px-3 py-1.5 rounded-full">
+              <Ban className="h-3 w-3" />
+              This user has been blocked. They cannot send messages.
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           /* Skeleton loading state */
           <div className="py-4 space-y-4">
@@ -328,143 +444,154 @@ export default function ChatWindow({ chatId }: { chatId: string }) {
 
       {/* Reply Input */}
       <div style={{ backgroundColor: "#17212B", borderTopColor: "#1E2B3A" }} className="px-3 py-2.5 sm:px-4 sm:py-3 border-t">
-        {/* Selected file preview */}
-        {selectedFile && (
-          <div className="mb-2.5 flex items-center gap-3 rounded-xl p-2.5" style={{ backgroundColor: "#1E2B3A", border: "1px solid #2B3B4C" }}>
-            {selectedFile.type.startsWith("image/") ? (
-              <img
-                src={URL.createObjectURL(selectedFile)}
-                alt="preview"
-                className="w-10 h-10 rounded-lg object-cover"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#2B3B4C" }}>
-                <Image className="h-5 w-5 text-gray-400" />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-200 truncate">{selectedFile.name}</p>
-              <p className="text-xs text-gray-500">
-                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setSelectedFile(null);
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
-              className="p-1 rounded-lg transition-colors hover:bg-white/10"
-            >
-              <X className="h-4 w-4 text-gray-400" />
-            </button>
-          </div>
-        )}
-
-        {/* Audio recording preview */}
-        {audioBlob && !isRecording && (
-          <div className="mb-2.5 flex items-center gap-3 rounded-xl p-2.5" style={{ backgroundColor: "#1E2B3A", border: "1px solid #2B3B4C" }}>
-            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "#EF5350" }}>
-              <Mic className="h-5 w-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-200">Voice message</p>
-              <p className="text-xs text-gray-500">{(audioBlob.size / 1024).toFixed(1)} KB</p>
-            </div>
-            <button
-              onClick={() => setAudioBlob(null)}
-              className="p-1 rounded-lg transition-colors hover:bg-white/10"
-            >
-              <X className="h-4 w-4 text-gray-400" />
-            </button>
-          </div>
-        )}
-
-        {/* Recording UI — Telegram style */}
-        {isRecording ? (
-          <div className="flex gap-2 items-center">
-            <button
-              onClick={cancelRecording}
-              className="p-2 text-gray-400 hover:text-white transition-colors rounded-full"
-            >
-              <Trash2 className="h-5 w-5" />
-            </button>
-            <div className="flex-1 flex items-center gap-3 rounded-xl px-4 py-2" style={{ backgroundColor: "#242F3D" }}>
-              <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse shrink-0" />
-              <div className="flex-1 flex items-center gap-1 h-8">
-                {/* Animated waveform bars */}
-                {Array.from({ length: 40 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="flex-1 rounded-full"
-                    style={{
-                      height: `${Math.max(15, Math.sin((recordingTime * 10 + i) * 0.5) * 20 + 50)}%`,
-                      backgroundColor: i % 2 === 0 ? "#2AABEE" : "#6AB4F0",
-                      opacity: 0.6 + Math.random() * 0.4,
-                      transition: "height 0.15s ease",
-                      maxHeight: "32px",
-                      minHeight: "4px",
-                    }}
-                  />
-                ))}
-              </div>
-              <span className="text-sm text-white font-mono w-10 text-right shrink-0">{formatTime(recordingTime)}</span>
-            </div>
-            <button
-              onClick={stopRecording}
-              className="p-2.5 text-white rounded-full transition-colors shrink-0"
-              style={{ backgroundColor: "#2AABEE" }}
-            >
-              <Square className="h-4 w-4" />
-            </button>
+        {isBlocked ? (
+          <div className="flex items-center justify-center py-2">
+            <p className="text-sm text-red-400/60 flex items-center gap-2">
+              <Ban className="h-4 w-4" />
+              User blocked — messaging disabled
+            </p>
           </div>
         ) : (
-          <div className="flex gap-2 items-center">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              className="hidden"
-              accept="image/*,video/*,.pdf,.doc,.docx,.zip,.txt"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-gray-400 hover:text-gray-300 transition-colors rounded-full hover:bg-white/5"
-              disabled={sending}
-            >
-              <Paperclip className="h-5 w-5" />
-            </button>
-            <div className="flex-1 relative">
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Message"
-                onKeyDown={handleKeyPress}
-                disabled={sending}
-                className="w-full border-0 rounded-xl py-2.5 px-4 text-sm text-white placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-[#2B5278]"
-                style={{ backgroundColor: "#242F3D" }}
-              />
-            </div>
-
-            {/* Voice / Send toggle */}
-            {newMessage.trim() || selectedFile || audioBlob ? (
-              <button
-                onClick={sendReply}
-                disabled={sending || (!newMessage.trim() && !selectedFile && !audioBlob)}
-                className="p-2 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                style={{ backgroundColor: "#2AABEE" }}
-              >
-                <Send className={`h-5 w-5 ${sending ? "animate-pulse" : ""}`} />
-              </button>
-            ) : (
-              <button
-                onClick={startRecording}
-                className="p-2 text-white rounded-full transition-colors shrink-0"
-                style={{ backgroundColor: "#2AABEE" }}
-              >
-                <Mic className="h-5 w-5" />
-              </button>
+          <>
+            {/* Selected file preview */}
+            {selectedFile && (
+              <div className="mb-2.5 flex items-center gap-3 rounded-xl p-2.5" style={{ backgroundColor: "#1E2B3A", border: "1px solid #2B3B4C" }}>
+                {selectedFile.type.startsWith("image/") ? (
+                  <img
+                    src={URL.createObjectURL(selectedFile)}
+                    alt="preview"
+                    className="w-10 h-10 rounded-lg object-cover"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#2B3B4C" }}>
+                    <Image className="h-5 w-5 text-gray-400" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-200 truncate">{selectedFile.name}</p>
+                  <p className="text-xs text-gray-500">
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedFile(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  className="p-1 rounded-lg transition-colors hover:bg-white/10"
+                >
+                  <X className="h-4 w-4 text-gray-400" />
+                </button>
+              </div>
             )}
-          </div>
+
+            {/* Audio recording preview */}
+            {audioBlob && !isRecording && (
+              <div className="mb-2.5 flex items-center gap-3 rounded-xl p-2.5" style={{ backgroundColor: "#1E2B3A", border: "1px solid #2B3B4C" }}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "#EF5350" }}>
+                  <Mic className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-200">Voice message</p>
+                  <p className="text-xs text-gray-500">{(audioBlob.size / 1024).toFixed(1)} KB</p>
+                </div>
+                <button
+                  onClick={() => setAudioBlob(null)}
+                  className="p-1 rounded-lg transition-colors hover:bg-white/10"
+                >
+                  <X className="h-4 w-4 text-gray-400" />
+                </button>
+              </div>
+            )}
+
+            {/* Recording UI — Telegram style */}
+            {isRecording ? (
+              <div className="flex gap-2 items-center">
+                <button
+                  onClick={cancelRecording}
+                  className="p-2 text-gray-400 hover:text-white transition-colors rounded-full"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </button>
+                <div className="flex-1 flex items-center gap-3 rounded-xl px-4 py-2" style={{ backgroundColor: "#242F3D" }}>
+                  <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse shrink-0" />
+                  <div className="flex-1 flex items-center gap-1 h-8">
+                    {/* Animated waveform bars */}
+                    {Array.from({ length: 40 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex-1 rounded-full"
+                        style={{
+                          height: `${Math.max(15, Math.sin((recordingTime * 10 + i) * 0.5) * 20 + 50)}%`,
+                          backgroundColor: i % 2 === 0 ? "#2AABEE" : "#6AB4F0",
+                          opacity: 0.6 + Math.random() * 0.4,
+                          transition: "height 0.15s ease",
+                          maxHeight: "32px",
+                          minHeight: "4px",
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm text-white font-mono w-10 text-right shrink-0">{formatTime(recordingTime)}</span>
+                </div>
+                <button
+                  onClick={stopRecording}
+                  className="p-2.5 text-white rounded-full transition-colors shrink-0"
+                  style={{ backgroundColor: "#2AABEE" }}
+                >
+                  <Square className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2 items-center">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  accept="image/*,video/*,.pdf,.doc,.docx,.zip,.txt"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2 text-gray-400 hover:text-gray-300 transition-colors rounded-full hover:bg-white/5"
+                  disabled={sending}
+                >
+                  <Paperclip className="h-5 w-5" />
+                </button>
+                <div className="flex-1 relative">
+                  <Input
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Message"
+                    onKeyDown={handleKeyPress}
+                    disabled={sending}
+                    className="w-full border-0 rounded-xl py-2.5 px-4 text-sm text-white placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-[#2B5278]"
+                    style={{ backgroundColor: "#242F3D" }}
+                  />
+                </div>
+
+                {/* Voice / Send toggle */}
+                {newMessage.trim() || selectedFile || audioBlob ? (
+                  <button
+                    onClick={sendReply}
+                    disabled={sending || (!newMessage.trim() && !selectedFile && !audioBlob)}
+                    className="p-2 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                    style={{ backgroundColor: "#2AABEE" }}
+                  >
+                    <Send className={`h-5 w-5 ${sending ? "animate-pulse" : ""}`} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={startRecording}
+                    className="p-2 text-white rounded-full transition-colors shrink-0"
+                    style={{ backgroundColor: "#2AABEE" }}
+                  >
+                    <Mic className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

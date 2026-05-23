@@ -10,6 +10,7 @@ const TelegramChatSchema = new mongoose.Schema({
   phone: String,
   profilePhoto: String,
   isBotUser: { type: Boolean, default: false },
+  blocked: { type: Boolean, default: false },
   lastMessageAt: Date,
 }, { timestamps: true });
 

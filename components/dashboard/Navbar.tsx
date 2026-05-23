@@ -21,7 +21,7 @@ export default function Navbar({ user, onMenuClick }: { user: SessionUser; onMen
           <Menu className="h-5 w-5" />
         </Button>
         <h2 className="font-semibold text-lg bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-transparent">
-          Welcome back, {user.name?.split(" ")[0] || "Admin"} 👋
+          Manage Panel
         </h2>
       </div>
 

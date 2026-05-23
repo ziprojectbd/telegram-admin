@@ -13,20 +13,20 @@ export const metadata: Metadata = {
 };
 
 // Initialize Telegram bot polling when the app starts.
-// This import triggers the module-level code in lib/telegram.ts
-// that creates the bot instance with polling: true and registers
-// event listeners for /start, message, etc.
+// This triggers startBotPolling() which reads the token from DB and starts polling.
+// API routes use getBot() which does NOT start polling, preventing 409 Conflicts.
 async function initTelegramBot() {
   try {
-    // Dynamic import ensures it only runs on the server
-    await import("@/lib/telegram");
-    console.log("🤖 Telegram bot initialized");
+    const { startBotPolling } = await import("@/lib/telegram");
+    await startBotPolling();
+    console.log("🤖 Telegram bot polling started (from layout)");
   } catch (err) {
     console.error("Failed to initialize Telegram bot:", err);
   }
 }
 
-// Call initialization eagerly so bot starts polling on first server request
+// Call initialization eagerly so bot starts polling on first server request.
+// Since only this single place starts polling, there will be no 409 Conflict errors.
 if (typeof globalThis !== 'undefined' && typeof window === 'undefined') {
   initTelegramBot();
 }

@@ -208,7 +208,7 @@ export default function LoginPage() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="demo@telegram.dev"
+                      placeholder="admin@telegram.dev"
                       autoComplete="email"
                       required
                       className="w-full pl-12 pr-4 py-4 bg-white/[0.02] border border-slate-700/50 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/[0.05] focus:ring-4 focus:ring-indigo-500/10 transition-all duration-300"
@@ -286,11 +286,11 @@ export default function LoginPage() {
                   <div className="w-full border-t border-slate-800/50" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-slate-950 px-4 text-slate-500 font-medium tracking-wider">Demo Credentials</span>
+                  <span className="bg-slate-950 px-4 text-slate-500 font-medium tracking-wider">Admin Credentials</span>
                 </div>
               </div>
 
-              {/* Demo credentials */}
+              {/* Admin credentials */}
               <div className="text-center space-y-3">
                 <div className="inline-flex items-center gap-4 bg-white/[0.02] border border-slate-800/50 rounded-2xl px-6 py-4 hover:bg-white/[0.04] transition-colors duration-300">
                   <div className="flex flex-col items-start text-xs">

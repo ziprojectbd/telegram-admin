@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import dbConnect from "@/lib/db";
 import Settings from "@/models/Settings";
+import { reinitializeBot } from "@/lib/telegram";
 
 export async function GET() {
   const session = await auth();
@@ -12,11 +13,10 @@ export async function GET() {
   let settings = await Settings.findOne({ userId: session.user.id }).lean();
 
   const data = {
-    botToken: (settings as any)?.botToken || process.env.TELEGRAM_BOT_TOKEN || "",
-    telegramChatId: (settings as any)?.telegramChatId || process.env.TELEGRAM_CHAT_ID || "",
-    webhookSecret: (settings as any)?.webhookSecret || process.env.TELEGRAM_WEBHOOK_SECRET || "",
-    demoEmail: (settings as any)?.demoEmail || process.env.DEMO_EMAIL || "",
-    demoPassword: (settings as any)?.demoPassword || process.env.DEMO_PASSWORD || "",
+    botToken: (settings as any)?.botToken || "",
+    telegramChatId: (settings as any)?.telegramChatId || "",
+    adminEmail: (settings as any)?.adminEmail || process.env.ADMIN_EMAIL || "",
+    adminPassword: (settings as any)?.adminPassword || process.env.ADMIN_PASSWORD || "",
     autoReplyEnabled: (settings as any)?.autoReplyEnabled ?? false,
     welcomeMessage: (settings as any)?.welcomeMessage || "",
     hasDbSettings: !!(settings as any)?._id,
@@ -32,15 +32,14 @@ export async function PUT(req: NextRequest) {
   await dbConnect();
 
   const body = await req.json();
-  const { botToken, telegramChatId, webhookSecret, demoEmail, demoPassword, autoReplyEnabled, welcomeMessage } = body;
+  const { botToken, telegramChatId, adminEmail, adminPassword, autoReplyEnabled, welcomeMessage } = body;
 
   const updateData: Record<string, any> = {};
 
   if (botToken !== undefined && botToken !== "") updateData.botToken = botToken;
   if (telegramChatId !== undefined) updateData.telegramChatId = telegramChatId;
-  if (webhookSecret !== undefined && webhookSecret !== "") updateData.webhookSecret = webhookSecret;
-  if (demoEmail !== undefined) updateData.demoEmail = demoEmail;
-  if (demoPassword !== undefined && demoPassword !== "") updateData.demoPassword = demoPassword;
+  if (adminEmail !== undefined) updateData.adminEmail = adminEmail;
+  if (adminPassword !== undefined && adminPassword !== "") updateData.adminPassword = adminPassword;
   if (autoReplyEnabled !== undefined) updateData.autoReplyEnabled = autoReplyEnabled;
   if (welcomeMessage !== undefined) updateData.welcomeMessage = welcomeMessage;
 
@@ -49,6 +48,16 @@ export async function PUT(req: NextRequest) {
     { $set: updateData },
     { upsert: true, new: true }
   ).lean();
+
+  // If botToken changed — reinitialize the Telegram bot with the new token
+  if (botToken !== undefined && botToken !== "") {
+    try {
+      await reinitializeBot();
+      console.log("🔄 Bot reinitialized with new token from settings");
+    } catch (err) {
+      console.error("Failed to reinitialize bot with new token:", err);
+    }
+  }
 
   return NextResponse.json({
     success: true,

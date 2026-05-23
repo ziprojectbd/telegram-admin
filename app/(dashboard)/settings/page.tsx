@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Eye, EyeOff, Save, RefreshCw, Key, Mail, Lock, Bot, Users, MessageSquare } from "lucide-react";
+import { Eye, EyeOff, Save, RefreshCw, Bot, Users, MessageSquare } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 export default function SettingsPage() {
@@ -18,9 +18,8 @@ export default function SettingsPage() {
   const [form, setForm] = useState({
     botToken: "",
     telegramChatId: "",
-    webhookSecret: "",
-    demoEmail: "",
-    demoPassword: "",
+    adminEmail: "",
+    adminPassword: "",
     autoReplyEnabled: false,
     welcomeMessage: "",
   });
@@ -32,9 +31,8 @@ export default function SettingsPage() {
         setForm({
           botToken: data.botToken || "",
           telegramChatId: data.telegramChatId || "",
-          webhookSecret: data.webhookSecret || "",
-          demoEmail: data.demoEmail || "",
-          demoPassword: data.demoPassword || "",
+          adminEmail: data.adminEmail || "",
+          adminPassword: data.adminPassword || "",
           autoReplyEnabled: data.autoReplyEnabled ?? false,
           welcomeMessage: data.welcomeMessage || "",
         });
@@ -54,9 +52,8 @@ export default function SettingsPage() {
         body: JSON.stringify({
           botToken: form.botToken.startsWith("••••") ? undefined : form.botToken,
           telegramChatId: form.telegramChatId,
-          webhookSecret: form.webhookSecret.startsWith("••••") ? undefined : form.webhookSecret,
-          demoEmail: form.demoEmail,
-          demoPassword: form.demoPassword.startsWith("••••") ? undefined : form.demoPassword,
+          adminEmail: form.adminEmail,
+          adminPassword: form.adminPassword.startsWith("••••") ? undefined : form.adminPassword,
           autoReplyEnabled: form.autoReplyEnabled,
           welcomeMessage: form.welcomeMessage,
         }),
@@ -147,19 +144,6 @@ export default function SettingsPage() {
                 placeholder="Channel username or ID"
               />
             </div>
-
-            {/* Webhook Secret */}
-            <div>
-              <Label htmlFor="webhookSecret" className="text-zinc-300">Webhook Secret</Label>
-              <p className="text-xs text-zinc-500 mb-1.5">Secret token for webhook security (optional)</p>
-              <Input
-                id="webhookSecret"
-                value={form.webhookSecret}
-                onChange={(e) => setForm({ ...form, webhookSecret: e.target.value })}
-                className="w-full bg-zinc-800/50 border-zinc-700 text-white"
-                placeholder="Enter webhook secret"
-              />
-            </div>
           </CardContent>
         </Card>
 
@@ -178,12 +162,12 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-5">
             <div>
-              <Label htmlFor="demoEmail" className="text-zinc-300">Admin Email</Label>
+              <Label htmlFor="adminEmail" className="text-zinc-300">Admin Email</Label>
               <p className="text-xs text-zinc-500 mb-1.5">Email used for admin login</p>
               <Input
-                id="demoEmail"
-                value={form.demoEmail}
-                onChange={(e) => setForm({ ...form, demoEmail: e.target.value })}
+                id="adminEmail"
+                value={form.adminEmail}
+                onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
                 autoComplete="off"
                 className="w-full bg-zinc-800/50 border-zinc-700 text-white"
                 placeholder="admin@telegram.dev"
@@ -191,14 +175,14 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <Label htmlFor="demoPassword" className="text-zinc-300">Admin Password</Label>
+              <Label htmlFor="adminPassword" className="text-zinc-300">Admin Password</Label>
               <p className="text-xs text-zinc-500 mb-1.5">Password for admin login</p>
               <div className="flex gap-2">
                 <div className="flex-1">
                   <Input
-                    id="demoPassword"
-                    value={form.demoPassword}
-                    onChange={(e) => setForm({ ...form, demoPassword: e.target.value })}
+                    id="adminPassword"
+                    value={form.adminPassword}
+                    onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
                     type={showPass ? "text" : "password"}
                     autoComplete="new-password"
                     className="w-full bg-zinc-800/50 border-zinc-700 text-white"

@@ -9,6 +9,7 @@ export interface TelegramChat {
   phone?: string;
   profilePhoto?: string;
   isBotUser?: boolean;
+  blocked?: boolean;
   lastMessageAt?: Date;
 }
 
@@ -38,7 +39,6 @@ export interface Post {
 export interface Settings {
   id: string;
   botToken: string;
-  webhookSecret: string;
   autoReplyEnabled: boolean;
 }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { bot } from "@/lib/telegram";
+import { bot, getTelegramChatId } from "@/lib/telegram";
 import dbConnect from "@/lib/db";
 import Post from "@/models/Post";
 import User from "@/models/User";
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     // Send to Telegram immediately
     try {
-      const chatId = process.env.TELEGRAM_CHAT_ID;
+      const chatId = await getTelegramChatId();
       if (chatId) {
         let sentMessage;
 
