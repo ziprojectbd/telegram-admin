@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Eye, EyeOff, Save, RefreshCw, Bot, Users, MessageSquare } from "lucide-react";
+import { Eye, EyeOff, Save, RefreshCw, Bot, Users, Database, MessageSquare } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 export default function SettingsPage() {
@@ -20,6 +20,7 @@ export default function SettingsPage() {
     telegramChatId: "",
     adminEmail: "",
     adminPassword: "",
+    mongodbUri: "",
     autoReplyEnabled: false,
     welcomeMessage: "",
   });
@@ -33,6 +34,7 @@ export default function SettingsPage() {
           telegramChatId: data.telegramChatId || "",
           adminEmail: data.adminEmail || "",
           adminPassword: data.adminPassword || "",
+          mongodbUri: data.mongodbUri || "",
           autoReplyEnabled: data.autoReplyEnabled ?? false,
           welcomeMessage: data.welcomeMessage || "",
         });
@@ -54,15 +56,26 @@ export default function SettingsPage() {
           telegramChatId: form.telegramChatId,
           adminEmail: form.adminEmail,
           adminPassword: form.adminPassword.startsWith("••••") ? undefined : form.adminPassword,
+          mongodbUri: form.mongodbUri,
           autoReplyEnabled: form.autoReplyEnabled,
           welcomeMessage: form.welcomeMessage,
         }),
       });
 
+      const data = await res.json();
+
       if (res.ok) {
-        toast.success("Settings saved successfully");
+        if (data.botStatus) {
+          if (data.botStatus.startsWith("✅")) {
+            toast.success(data.botStatus);
+          } else {
+            toast.error(data.botStatus);
+          }
+        } else {
+          toast.success(data.message || "Settings saved successfully");
+        }
       } else {
-        toast.error("Failed to save settings");
+        toast.error(data.message || "Failed to save settings");
       }
     } catch {
       toast.error("Something went wrong");
@@ -203,6 +216,34 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Database Configuration */}
+        <Card className="bg-zinc-900/50 border-zinc-800">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                <Database className="h-5 w-5 text-orange-500" />
+              </div>
+              <div>
+                <CardTitle className="text-white">Database Configuration</CardTitle>
+                <p className="text-sm text-zinc-500 mt-0.5">MongoDB connection string for database access</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div>
+              <Label htmlFor="mongodbUri" className="text-zinc-300">MongoDB URI</Label>
+              <p className="text-xs text-zinc-500 mb-1.5">Connection string to your MongoDB database</p>
+              <Input
+                id="mongodbUri"
+                value={form.mongodbUri}
+                onChange={(e) => setForm({ ...form, mongodbUri: e.target.value })}
+                className="w-full bg-zinc-800/50 border-zinc-700 text-white"
+                placeholder="mongodb+srv://user:pass@cluster.mongodb.net/?appName=App"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Preferences */}
         <Card className="bg-zinc-900/50 border-zinc-800">
           <CardHeader>
@@ -253,7 +294,7 @@ export default function SettingsPage() {
             {saving ? "Saving..." : "Save Settings"}
           </Button>
           <p className="text-xs text-zinc-600 max-w-[200px]">
-            Settings override .env values. Tokens stored in database.
+            All settings stored in database. Changes apply immediately.
           </p>
         </div>
       </div>

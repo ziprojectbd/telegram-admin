@@ -5,15 +5,19 @@ import TelegramMessage from '@/models/TelegramMessage';
 import { startScheduler } from './scheduler';
 import Settings from '@/models/Settings';
 
-// We store the bot instance + its associated data globally
-// so it survives Next.js hot reloads
-let botInstance: TelegramBot | null = null;
-let currentTokenHash: string | null = null;
-let pollingStarted = false;
+// ─── Singleton bot instance persisted on globalThis ───
+const G = globalThis as any;
+let botInstance: TelegramBot | null = G.__tgBotInstance ?? null;
+let currentTokenHash: string | null = G.__tgCurrentTokenHash ?? null;
+let listenersAttached = false;
 
-/**
- * Hash a string for comparison (simple, not crypto-secure — just for change detection)
- */
+function setBotInstance(bot: TelegramBot | null, hash: string | null) {
+  botInstance = bot;
+  currentTokenHash = hash;
+  G.__tgBotInstance = bot;
+  G.__tgCurrentTokenHash = hash;
+}
+
 function hash(s: string): string {
   let h = 0;
   for (let i = 0; i < s.length; i++) {
@@ -23,73 +27,52 @@ function hash(s: string): string {
   return h.toString(36);
 }
 
-/**
- * Remove all existing bot event listeners so we can re-attach them
- * after re-creating the bot with a new token.
- */
-function removeAllListeners() {
-  if (botInstance) {
-    botInstance.removeAllListeners('message');
-    botInstance.removeTextListener(/\/start/);
-  }
-}
+// ─── Event listeners ───
+// Attached ONCE when the bot singleton is created.
+// All updates flow through processUpdate() in the webhook route.
 
-/**
- * Attach the core event listeners to the bot instance.
- * These are the /start command handler and the message handler.
- */
 function attachEventListeners() {
-  if (!botInstance) return;
+  if (!botInstance || listenersAttached) return;
 
-  // Handle /start command — send welcome message & register user
   botInstance.onText(/\/start/, async (msg) => {
     console.log(`🚀 /start received from user ${msg.from?.id}`);
     await dbConnect();
-
     const chat = msg.chat;
-    const from = msg.from;
     const chatId = chat.id.toString();
 
-    // Check if user is blocked before proceeding
     const existingChat = await TelegramChat.findOne({ chatId }).lean();
     if (existingChat && (existingChat as any).blocked) {
-      console.log(`🚫 Blocked user ${from?.id} tried /start — ignored`);
+      console.log(`🚫 Blocked user ${msg.from?.id} tried /start — ignored`);
       return;
     }
 
-    // Register the user in the database
     await registerTelegramUser(msg);
 
-    // Load custom welcome message from settings (fall back to default)
     const settings = await Settings.findOne({});
-    let welcomeMessage = "";
+    let welcome = '';
     if (settings?.welcomeMessage) {
-      welcomeMessage = settings.welcomeMessage.replace(/\$\{name\}/g, from?.first_name || 'User');
+      welcome = settings.welcomeMessage.replace(/\$\{name\}/g, msg.from?.first_name || 'User');
     }
-    if (!welcomeMessage) {
-      welcomeMessage = `👋 *Welcome to the Admin Panel Bot!*
-
-Hello${from?.first_name ? ` ${from.first_name}` : ''}! You have been successfully registered.
-
-Thank you for connecting! 🙏`;
+    if (!welcome) {
+      welcome =
+        `👋 *Welcome to the Admin Panel Bot!*\n\n` +
+        `Hello${msg.from?.first_name ? ` ${msg.from.first_name}` : ''}! ` +
+        `You have been successfully registered.\n\n` +
+        `Thank you for connecting! 🙏`;
     }
-
     try {
-      await botInstance!.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+      await botInstance!.sendMessage(chatId, welcome, { parse_mode: 'Markdown' });
       console.log(`📨 Welcome message sent to ${chatId}`);
     } catch (err) {
       console.error('Failed to send welcome message:', err);
     }
   });
 
-  // Save incoming message to MongoDB (for all messages, including after /start)
   botInstance.on('message', async (msg) => {
     await dbConnect();
-
     const chat = msg.chat;
     const from = msg.from;
 
-    // Check if user is blocked — reject messages from blocked users
     if (chat.type === 'private') {
       const existingChat = await TelegramChat.findOne({ chatId: chat.id.toString() }).lean();
       if (existingChat && (existingChat as any).blocked) {
@@ -98,33 +81,24 @@ Thank you for connecting! 🙏`;
       }
     }
 
-    // Register user if not already registered (handles any message before /start)
     if (chat.type === 'private' && from) {
       const existingChat = await TelegramChat.findOne({ chatId: chat.id.toString() });
       if (!existingChat) {
         await registerTelegramUser(msg);
       } else {
-        // Update last message time and user details — NEVER touch the "blocked" field
-        const updates: any = { lastMessageAt: new Date() };
-        if (from.username) updates.username = from.username;
-        if (from.first_name) updates.firstName = from.first_name;
-        if (from.last_name) updates.lastName = from.last_name;
-        if ((from as any).phone_number) updates.phone = (from as any).phone_number;
-
-        await TelegramChat.findOneAndUpdate(
-          { chatId: chat.id.toString() },
-          { $set: updates }
-        );
+        const u: any = { lastMessageAt: new Date() };
+        if (from.username) u.username = from.username;
+        if (from.first_name) u.firstName = from.first_name;
+        if (from.last_name) u.lastName = from.last_name;
+        if ((from as any).phone_number) u.phone = (from as any).phone_number;
+        await TelegramChat.findOneAndUpdate({ chatId: chat.id.toString() }, { $set: u });
       }
     }
 
-    // Determine media type and URL
     let mediaUrl: string | undefined;
     let mediaType: string | undefined;
-
     if (msg.photo) {
-      const largestPhoto = msg.photo[msg.photo.length - 1];
-      mediaUrl = largestPhoto.file_id;
+      mediaUrl = msg.photo[msg.photo.length - 1].file_id;
       mediaType = 'photo';
     } else if (msg.video) {
       mediaUrl = msg.video.file_id;
@@ -146,7 +120,6 @@ Thank you for connecting! 🙏`;
       mediaType = 'sticker';
     }
 
-    // Save message
     try {
       await TelegramMessage.create({
         messageId: msg.message_id,
@@ -162,48 +135,36 @@ Thank you for connecting! 🙏`;
       console.error('Failed to save message:', err);
     }
   });
+
+  listenersAttached = true;
 }
 
-/**
- * Register a user who started the bot by saving their Telegram info to the database.
- * Includes profile photo, phone number (if available), chat ID, username, etc.
- * Preserves the existing "blocked" field — never resets it.
- */
 async function registerTelegramUser(msg: TelegramBot.Message) {
   await dbConnect();
-
   const chat = msg.chat;
   const from = msg.from;
   if (!from) return;
-
   const chatId = chat.id.toString();
 
-  // First, check if the chat already exists and preserve its blocked status
   const existingChat = await TelegramChat.findOne({ chatId }).lean();
-  const currentBlockedStatus = existingChat ? (existingChat as any).blocked : undefined;
+  const blocked = existingChat ? (existingChat as any).blocked : undefined;
 
-  // Attempt to fetch profile photo
-  let profilePhotoUrl: string | undefined;
+  let photo: string | undefined;
   try {
-    const userPhotos = await botInstance!.getUserProfilePhotos(from.id, { limit: 1 });
-    if (userPhotos.total_count > 0) {
-      const fileId = userPhotos.photos[0][0].file_id;
-      const fileLink = await botInstance!.getFileLink(fileId);
-      profilePhotoUrl = fileLink;
+    const photos = await botInstance!.getUserProfilePhotos(from.id, { limit: 1 });
+    if (photos.total_count > 0) {
+      photo = await botInstance!.getFileLink(photos.photos[0][0].file_id);
     }
-  } catch (err) {
-    // Profile photo may not be available; continue without it
-    console.log('Could not fetch profile photo for user', from.id);
+  } catch {
+    /* ok */
   }
 
-  // Build title from first/last name for private chats
   const title =
     chat.type === 'private'
       ? [chat.first_name, chat.last_name].filter(Boolean).join(' ') || 'Private Chat'
       : chat.title || 'Group';
 
-  // Build $set object — explicitly include blocked to preserve current value
-  const setFields: Record<string, any> = {
+  const fields: any = {
     chatId,
     title,
     type: chat.type,
@@ -211,140 +172,149 @@ async function registerTelegramUser(msg: TelegramBot.Message) {
     firstName: from.first_name || undefined,
     lastName: from.last_name || undefined,
     phone: (from as any).phone_number || undefined,
-    profilePhoto: profilePhotoUrl || undefined,
+    profilePhoto: photo || undefined,
     isBotUser: chat.type === 'private',
     lastMessageAt: new Date(),
+    blocked: existingChat ? !!blocked : false,
   };
 
-  // IMPORTANT: Always preserve the existing blocked status.
-  // If the document exists, carry over its current blocked value.
-  // If it doesn't exist, default to false.
-  if (existingChat) {
-    setFields.blocked = currentBlockedStatus === true;
-  } else {
-    setFields.blocked = false;
-  }
-
-  await TelegramChat.findOneAndUpdate(
-    { chatId },
-    { $set: setFields },
-    { upsert: true, new: true }
-  );
-
-  console.log(`✅ Registered user ${from.id} (${from.username || 'no username'})`);
+  await TelegramChat.findOneAndUpdate({ chatId }, { $set: fields }, { upsert: true, new: true });
+  console.log(`✅ Registered user ${from.id}`);
 }
 
-/**
- * Stop current bot polling if it's running.
- */
-async function stopPolling() {
-  if (botInstance && pollingStarted) {
-    try {
-      await botInstance.stopPolling();
-      console.log('⏹️  Bot polling stopped');
-    } catch (err) {
-      console.error('Error stopping polling:', err);
-    }
-    pollingStarted = false;
-  }
-}
+// ─── Public API ───
 
 /**
- * Start polling on the current bot instance (only once).
- * Guarded to prevent multiple polling instances.
- */
-function startPollingIfNeeded() {
-  if (!botInstance || pollingStarted) return;
-
-  const isLocalDev =
-    process.env.NEXTAUTH_URL?.includes('localhost') ||
-    process.env.NEXTAUTH_URL?.includes('127.0.0.1');
-
-  if (isLocalDev) {
-    botInstance.startPolling().catch((err) => {
-      console.error('Failed to start polling:', err);
-    });
-    pollingStarted = true;
-    console.log('✅ Telegram bot polling started (single instance)');
-  }
-}
-
-/**
- * Get or create the bot instance.
- * Reads bot token from the Settings database ONLY.
- * No environment variable fallback — all config is database-driven.
- * 
- * IMPORTANT: This function creates the bot WITHOUT starting polling.
- * Polling is only started by the dedicated startBotPolling() function
- * to prevent multiple polling instances (409 Conflict errors).
+ * Get or create the singleton bot instance.
+ * Reads token from Settings database ONLY (no env fallback).
+ * Bot is created WITHOUT polling — all updates come via webhook.
  */
 export async function getBot(): Promise<TelegramBot> {
   await dbConnect();
-
-  // Get token from database settings (MANDATORY — no env fallback)
   let token: string | undefined;
   try {
     const settings = await Settings.findOne({}).lean();
-    const dbToken = (settings as any)?.botToken;
-    if (dbToken && typeof dbToken === 'string' && dbToken.trim()) {
-      token = dbToken.trim();
-    }
+    const t = (settings as any)?.botToken;
+    if (t && typeof t === 'string' && t.trim()) token = t.trim();
   } catch (err) {
-    console.error('Failed to read bot token from settings DB:', err);
+    console.error('Failed to read bot token from DB:', err);
   }
-
   if (!token) {
-    throw new Error(
-      'No Telegram bot token found. Please set it in the Settings page.'
-    );
+    throw new Error('No Telegram bot token found. Set it in Settings.');
   }
 
   const tokenH = hash(token);
-
-  // If the token changed, recreate the bot
+  // If token changed, recreate the bot with new token
   if (botInstance && currentTokenHash !== tokenH) {
-    console.log('🔄 Bot token changed — reinitializing bot...');
+    console.log('🔄 Token changed — recreating bot instance');
     await stopPolling();
     removeAllListeners();
-    botInstance = null;
-    currentTokenHash = null;
+    setBotInstance(null, null);
+    listenersAttached = false;
   }
 
-  // Create bot if not exists (NO polling — polling is started separately)
   if (!botInstance) {
-    botInstance = new TelegramBot(token, { polling: false });
-    currentTokenHash = tokenH;
+    const newBot = new TelegramBot(token, { polling: false, webHook: false });
+    setBotInstance(newBot, tokenH);
     attachEventListeners();
-    console.log('🤖 Telegram bot initialized (DB-driven token, no polling yet)');
+    console.log('🤖 Telegram bot initialized');
   }
 
-  return botInstance;
+  return botInstance!;
+}
+
+function removeAllListeners() {
+  if (!botInstance) return;
+  botInstance.removeAllListeners('message');
+  botInstance.removeTextListener(/\/start/);
 }
 
 /**
- * Start the Telegram bot's polling for incoming updates.
- * This should be called EXACTLY ONCE from app initialization (layout.tsx).
- * API routes should use getBot() which does NOT start polling.
+ * Start polling for updates — fallback for localhost where HTTPS webhook is unavailable.
+ * Uses a globalThis guard to prevent duplicate polling.
  */
-export async function startBotPolling(): Promise<void> {
-  await getBot(); // Ensure bot instance exists
-  startPollingIfNeeded();
+async function startPolling(bot: TelegramBot) {
+  if (G.__tgPollingStarted) return;
+  G.__tgPollingStarted = true;
+
+  // Delete any existing webhook to ensure polling works
+  try {
+    await bot.deleteWebHook();
+  } catch {
+    // ignore
+  }
+
+  await bot.startPolling({ restart: true });
+  bot.on('polling_error', (err: any) => {
+    // Telegram's 409 conflict errors are normal and harmless in polling mode
+    if (err?.code === 'EFATAL' || err?.statusCode === 409) return;
+    console.error('⚠️ Polling error:', err?.message || err);
+  });
+  console.log('🔄 Telegram bot started in polling mode');
+}
+
+/**
+ * Stop polling. Called when recreating the bot (token change).
+ */
+async function stopPolling() {
+  if (!botInstance || !G.__tgPollingStarted) return;
+  try {
+    await botInstance.stopPolling();
+  } catch {
+    // ignore
+  }
+  G.__tgPollingStarted = false;
+}
+
+/**
+ * Configure the Telegram webhook.
+ * Call this ONCE at app startup (from layout.tsx).
+ * Safe to call multiple times — uses a globalThis guard.
+ */
+export async function setupWebhook() {
+  if (G.__tgWebhookSet) return;
+  G.__tgWebhookSet = true;
+
+  const bot = await getBot();
+  const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL;
+  if (!baseUrl) {
+    console.warn('⚠️ NEXTAUTH_URL not set — falling back to polling mode.');
+    await startPolling(bot);
+    return;
+  }
+
+  // Telegram requires HTTPS — skip webhook on localhost, use polling instead
+  if (!baseUrl.startsWith('https://')) {
+    console.warn('⚠️ Webhook SKIPPED (HTTPS required). Falling back to polling mode for local dev.');
+    await startPolling(bot);
+    return;
+  }
+
+  const url = `${baseUrl.replace(/\/$/, '')}/api/webhook/telegram`;
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+  try {
+    const opts: any = {};
+    if (secret) opts.secret_token = secret;
+    await bot.setWebHook(url, opts);
+    console.log(`✅ Webhook set to ${url}`);
+  } catch (err) {
+    console.error('❌ Failed to set webhook:', err);
+    G.__tgWebhookSet = false;
+  }
 }
 
 /**
  * Get the Telegram chat ID from database settings ONLY.
- * No environment variable fallback — all config is database-driven.
  */
 export async function getTelegramChatId(): Promise<string | null> {
   await dbConnect();
   try {
-    const settings = await Settings.findOne({}).lean();
-    const dbChatId = (settings as any)?.telegramChatId;
-    if (dbChatId && typeof dbChatId === 'string' && dbChatId.trim()) {
-      return dbChatId.trim();
-    }
+    const s = await Settings.findOne({}).lean();
+    const id = (s as any)?.telegramChatId;
+    if (id && typeof id === 'string' && id.trim()) return id.trim();
   } catch (err) {
-    console.error('Failed to read chat ID from settings DB:', err);
+    console.error('Failed to read chat ID from DB:', err);
   }
   return null;
 }
@@ -352,56 +322,30 @@ export async function getTelegramChatId(): Promise<string | null> {
 /**
  * Force reinitialize the bot with the latest token from DB.
  * Called after settings are updated.
+ * Re-creates the bot instance and resets the webhook.
  */
 export async function reinitializeBot(): Promise<TelegramBot> {
   await dbConnect();
   await stopPolling();
   removeAllListeners();
-  botInstance = null;
-  currentTokenHash = null;
-  pollingStarted = false;
-  // Re-create the bot AND restart polling (since this is an explicit admin action)
+  setBotInstance(null, null);
+  listenersAttached = false;
+  G.__tgWebhookSet = false; // Allow webhook to be re-set
+
   const bot = await getBot();
-  startPollingIfNeeded();
+  // Re-set webhook with new token
+  await setupWebhook();
   return bot;
 }
 
-// ============================
-// Setup webhook (for production)
-// ============================
-export async function setupWebhook() {
-  const isLocalDev =
-    process.env.NEXTAUTH_URL?.includes('localhost') ||
-    process.env.NEXTAUTH_URL?.includes('127.0.0.1');
-
-  if (isLocalDev) {
-    console.log('⚠️ Skipping webhook setup — local dev with polling');
-    return;
-  }
-  const bot = await getBot();
-  const url = `${process.env.NEXTAUTH_URL}/api/webhook/telegram`;
-  await bot.setWebHook(url, {
-    secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
-  });
-  console.log('✅ Telegram webhook set successfully at', url);
-}
-
-// ============================
-// Backward-compatible export: `bot` as a lazy getter proxy
-// Any code that does `import { bot } from "@/lib/telegram"` will still work,
-// but the underlying bot instance is fetched from DB lazily.
-// ============================
+// ─── Backward-compatible proxy ───
+// Any code doing `import { bot } from "@/lib/telegram"` still works.
 export const bot = new Proxy({} as TelegramBot, {
   get(_target, prop: keyof TelegramBot) {
-    // Return a function that first awaits getBot(), then calls the method
-    return (...args: any[]) => {
-      return getBot().then((b) => {
+    return (...args: any[]) =>
+      getBot().then((b) => {
         const method = b[prop] as any;
-        if (typeof method === 'function') {
-          return method.apply(b, args);
-        }
-        return method;
+        return typeof method === 'function' ? method.apply(b, args) : method;
       });
-    };
   },
 });

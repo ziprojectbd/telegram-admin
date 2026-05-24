@@ -12,23 +12,27 @@ export const metadata: Metadata = {
   description: "Manage your Telegram bot, posts, inbox & settings",
 };
 
-// Initialize Telegram bot polling when the app starts.
-// This triggers startBotPolling() which reads the token from DB and starts polling.
-// API routes use getBot() which does NOT start polling, preventing 409 Conflicts.
-async function initTelegramBot() {
-  try {
-    const { startBotPolling } = await import("@/lib/telegram");
-    await startBotPolling();
-    console.log("🤖 Telegram bot polling started (from layout)");
-  } catch (err) {
-    console.error("Failed to initialize Telegram bot:", err);
-  }
-}
-
-// Call initialization eagerly so bot starts polling on first server request.
-// Since only this single place starts polling, there will be no 409 Conflict errors.
-if (typeof globalThis !== 'undefined' && typeof window === 'undefined') {
-  initTelegramBot();
+// Initialize Telegram bot webhook ONCE at app startup.
+// Uses a globalThis guard to prevent duplicate setup on Next.js hot reload.
+if (
+  typeof globalThis !== 'undefined' &&
+  typeof window === 'undefined' &&
+  !(globalThis as any).__tgLayoutInitDone
+) {
+  (globalThis as any).__tgLayoutInitDone = true;
+  (async () => {
+    try {
+      const [{ setupWebhook }, { loadDbUriFromSettings }] = await Promise.all([
+        import("@/lib/telegram"),
+        import("@/lib/db"),
+      ]);
+      await loadDbUriFromSettings();
+      await setupWebhook();
+      console.log("🤖 Telegram bot webhook configured (from layout)");
+    } catch (err) {
+      console.error("Failed to setup Telegram webhook:", err);
+    }
+  })();
 }
 
 export default function RootLayout({
